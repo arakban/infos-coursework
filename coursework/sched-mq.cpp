@@ -28,7 +28,10 @@ public:
      */
     void init()
     {
-        // TODO: Implement me!
+        const int realtime = 1;
+        const int interactive = 2;
+        const int normal = 3;
+        const int daemon = 4;
     }
 
     /**
@@ -36,8 +39,10 @@ public:
      * @param entity
      */
     void add_to_runqueue(SchedulingEntity& entity) override
-    {
+    {   
+        // implement lock first
         UniqueIRQLock l;
+        //task eligible to run
 		runqueue.enqueue(&entity);
     }
 
@@ -49,6 +54,7 @@ public:
     {   
         // implement lock first
         UniqueIRQLock l;
+        //task no longer eligible 
 		runqueue.remove(&entity);
     }
 
@@ -59,7 +65,21 @@ public:
      */
     SchedulingEntity *pick_next_entity() override
     {
-        // TODO: Implement me!
+        //look at the different ques of priorities of the thread
+        UniqueIRQLock l;
+        if (runqueue.count()==0) {
+            return NULL;
+        }
+
+        else {
+            //get the first process
+            SchedulingEntity *entity = runqueue.pop(); 
+            //put at the front of queue and return 
+            runqueue.enqueue(entity);
+            return entity;
+        }
+
+        //round-robin fashion to finish highest priority queue 
     }
 
 private:
