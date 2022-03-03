@@ -37,7 +37,8 @@ public:
      */
     void add_to_runqueue(SchedulingEntity& entity) override
     {
-        // TODO: Implement me!
+        UniqueIRQLock l;
+		runqueue.enqueue(&entity);
     }
 
     /**
@@ -45,8 +46,10 @@ public:
      * @param entity
      */
     void remove_from_runqueue(SchedulingEntity& entity) override
-    {
-        // TODO: Implement me!
+    {   
+        // implement lock first
+        UniqueIRQLock l;
+		runqueue.remove(&entity);
     }
 
     /**
@@ -58,6 +61,10 @@ public:
     {
         // TODO: Implement me!
     }
+
+private:
+    // A list to keep track of the current runqueue 
+    List<SchedulingEntity *> runqueue;
 };
 
 /* --- DO NOT CHANGE ANYTHING BELOW THIS LINE --- */
