@@ -34,10 +34,7 @@ public:
      */
     void init()
     {
-        List<SchedulingEntity *> realtime_runqueue;
-        List<SchedulingEntity *> interactive_runqueue;
-        List<SchedulingEntity *> normal_runqueue;
-        List<SchedulingEntity *> daemon_runqueue;
+
     }
 
     /**
@@ -98,9 +95,9 @@ public:
         int entity_priority = entity.priority()
         int entity_name = entity.name().c_str()
 
-        if (runqueue.count()==0) {
-            return NULL;
-        }
+        if (realtime_runqueue.count() == 0) return NULL;
+        if (runqueue.count() > 0) return realtime_runqueue.first();
+        
 
         else {
             //get the first process
@@ -115,7 +112,10 @@ public:
 
 private:
     // A list to keep track of the current runqueue 
-    List<SchedulingEntity *> runqueue;
+    List<SchedulingEntity *> realtime_runqueue;
+    List<SchedulingEntity *> interactive_runqueue;
+    List<SchedulingEntity *> normal_runqueue;
+    List<SchedulingEntity *> daemon_runqueue;
 };
 
 /* --- DO NOT CHANGE ANYTHING BELOW THIS LINE --- */
