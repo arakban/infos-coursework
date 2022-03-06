@@ -8,6 +8,7 @@
 #include <infos/kernel/log.h>
 #include <infos/util/list.h>
 #include <infos/util/lock.h>
+#include <infos/util/string.h>
 
 using namespace infos::kernel;
 using namespace infos::util;
@@ -22,16 +23,21 @@ public:
      * Returns the friendly name of the algorithm, for debugging and selection purposes.
      */
     const char* name() const override { return "mq"; }
+    const int realtime = 0;
+    const int interactive = 1;
+    const int normal = 2;
+    const int daemon = 3;
+    const int idle = 4;
 
     /**
      * Called during scheduler initialisation.
      */
     void init()
     {
-        const int realtime = 1;
-        const int interactive = 2;
-        const int normal = 3;
-        const int daemon = 4;
+        List<SchedulingEntity *> realtime_runqueue;
+        List<SchedulingEntity *> interactive_runqueue;
+        List<SchedulingEntity *> normal_runqueue;
+        List<SchedulingEntity *> daemon_runqueue;
     }
 
     /**
@@ -43,7 +49,8 @@ public:
         // implement lock first
         UniqueIRQLock l;
         //task eligible to run
-		runqueue.enqueue(&entity);
+		
+        // runqueue.enqueue(&entity);
     }
 
     /**
@@ -54,8 +61,28 @@ public:
     {   
         // implement lock first
         UniqueIRQLock l;
-        //task no longer eligible 
-		runqueue.remove(&entity);
+
+        int entity_priority = entity.priority();
+        String entity_name = entity.name().c_str();
+        
+        //task no longer eligible, 
+        if (entity_priority == realtime) {
+            realtime_runqueue.remove(&entity);
+        }
+		
+        if (entity_priority == INTERACTIVE) {
+            interactive_runqueue.remove(&entity);
+        }
+
+        if (entity_priority == NORMAL) {
+            normal_runqueue.remove(&entity);
+        }
+
+        if (entity.priority() == DAEMON) {
+            daemon_runqueue.remove(&entity);
+        }
+        
+        // runqueue.remove(&entity);
     }
 
     /**
@@ -64,9 +91,13 @@ public:
      * e.g. its timeslice has not expired.
      */
     SchedulingEntity *pick_next_entity() override
-    {
+    {   
+        
         //look at the different ques of priorities of the thread
         UniqueIRQLock l;
+        int entity_priority = entity.priority()
+        int entity_name = entity.name().c_str()
+
         if (runqueue.count()==0) {
             return NULL;
         }
