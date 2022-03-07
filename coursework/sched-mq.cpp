@@ -43,11 +43,28 @@ public:
      */
     void add_to_runqueue(SchedulingEntity& entity) override
     {   
-        // implement lock first
+        // implement lock first so we don't run out of time
         UniqueIRQLock l;
-        //task eligible to run
+        
+        //add runnable task to runqueue of the correct priority 
+        int entity_priority = entity.priority();
+        //String entity_name = entity.name().c_str();
+        
+        if (entity_priority == SchedulingEntityPriority::REALTIME) {
+            realtime_runqueue.enqueue(&entity);
+        }
 		
-        // runqueue.enqueue(&entity);
+        if (entity_priority == SchedulingEntityPriority::INTERACTIVE) {
+            interactive_runqueue.enqueue(&entity);
+        }
+
+        if (entity_priority == SchedulingEntityPriority::NORMAL) {
+            normal_runqueue.enqueue(&entity);
+        }
+
+        if (entity.priority() == SchedulingEntityPriority::DAEMON) {
+            daemon_runqueue.enqueue(&entity);
+        }
     }
 
     /**
@@ -56,30 +73,29 @@ public:
      */
     void remove_from_runqueue(SchedulingEntity& entity) override
     {   
-        // implement lock first
+        // implement lock first so we don't run out of time
         UniqueIRQLock l;
 
         int entity_priority = entity.priority();
-        String entity_name = entity.name().c_str();
+        //String entity_name = entity.name().c_str();
         
-        //task no longer eligible, 
-        if (entity_priority == realtime) {
+        //task is no longer eligible, so remove from its runqueue  
+        if (entity_priority == SchedulingEntityPriority::REALTIME) {
             realtime_runqueue.remove(&entity);
         }
 		
-        if (entity_priority == INTERACTIVE) {
+        if (entity_priority == SchedulingEntityPriority::INTERACTIVE) {
             interactive_runqueue.remove(&entity);
         }
 
-        if (entity_priority == NORMAL) {
+        if (entity_priority == SchedulingEntityPriority::NORMAL) {
             normal_runqueue.remove(&entity);
         }
 
-        if (entity.priority() == DAEMON) {
+        if (entity.priority() == SchedulingEntityPriority::DAEMON) {
             daemon_runqueue.remove(&entity);
         }
         
-        // runqueue.remove(&entity);
     }
 
     /**
@@ -89,25 +105,43 @@ public:
      */
     SchedulingEntity *pick_next_entity() override
     {   
+        //look at the different queues of priorities of the thread, return top of queue if last process left
+        //round-robin fashion to finish/point-to the current process to non-empty highest priority queue 
+        //otherwise go to the next priority queue 
+         
+        if (realtime_runqueue.count() > 0)  {
+            //get the first entity on top of the queue 
+            SchedulingEntity *entity = realtime_runqueue.dequeue(); 
+            //put at the end of queue and return entity 
+            realtime_runqueue.enqueue(entity);
+            return entity; 
+        } 
         
-        //look at the different ques of priorities of the thread
-        UniqueIRQLock l;
-        int entity_priority = entity.priority()
-        int entity_name = entity.name().c_str()
-
-        if (realtime_runqueue.count() == 0) return NULL;
-        if (runqueue.count() > 0) return realtime_runqueue.first();
+        //realtime queue is empty so move to interactive 
+        else if (interactive_runqueue.count() > 0)  {
+            SchedulingEntity *entity = daemon_runqueue.dequeue(); 
+            daemon_runqueue.enqueue(entity);
+            return entity; 
+        } 
         
-
-        else {
-            //get the first process
-            SchedulingEntity *entity = runqueue.pop(); 
-            //put at the front of queue and return 
-            runqueue.enqueue(entity);
-            return entity;
+        //realtime queue is empty so move to interactive 
+        else if (normal_runqueue.count() > 0)  {
+            SchedulingEntity *entity = daemon_runqueue.dequeue(); 
+            daemon_runqueue.enqueue(entity);
+            return entity; 
+        } 
+        
+        //realtime queue is empty so move to interactive 
+        else if (daemon_runqueue.count() == 0) {
+            return NULL;
         }
-
-        //round-robin fashion to finish highest priority queue 
+        
+        //realtime queue is empty so move to interactive 
+        else {
+            SchedulingEntity *entity = daemon_runqueue.dequeue(); 
+            daemon_runqueue.enqueue(entity);
+            return entity;  
+        }
     }
 
 private:
@@ -116,6 +150,7 @@ private:
     List<SchedulingEntity *> interactive_runqueue;
     List<SchedulingEntity *> normal_runqueue;
     List<SchedulingEntity *> daemon_runqueue;
+
 };
 
 /* --- DO NOT CHANGE ANYTHING BELOW THIS LINE --- */
