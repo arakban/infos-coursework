@@ -29,7 +29,7 @@ public:
      */
     void init()
     {
-
+        syslog.messagef(LogLevel::DEBUG, "Scheduling algo init\n");
     }
 
     /**
