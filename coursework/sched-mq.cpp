@@ -38,15 +38,15 @@ public:
      */
     void add_to_runqueue(SchedulingEntity& entity) override
     {           
-        syslog.messagef(LogLevel::DEBUG, "OS has asked to add entity to runqueue, getting priority and name");
+        //syslog.messagef(LogLevel::DEBUG, "OS has asked to add entity to runqueue, getting priority and name");
 
         UniqueIRQLock l;
 
         SchedulingEntityPriority::SchedulingEntityPriority entity_priority = entity.priority();
-        syslog.messagef(LogLevel::DEBUG, "Got priority ");
+        //syslog.messagef(LogLevel::DEBUG, "Got priority ");
 
         const infos::util::String entity_name = entity.name();
-        syslog.messagef(LogLevel::DEBUG, "Got name %s!", entity_name.c_str());
+        //syslog.messagef(LogLevel::DEBUG, "Got name %s!", entity_name.c_str());
 
         //REALTIME
         if (entity_priority == SchedulingEntityPriority::REALTIME) {
@@ -74,7 +74,7 @@ public:
 
         //IDLE - should not happen
         else {
-            syslog.messagef(LogLevel::DEBUG, "IDLE process so nothing to add");
+            syslog.messagef(LogLevel::DEBUG, "trying to add IDLE process so nothing to add");
         }
     }
 
@@ -85,15 +85,15 @@ public:
     void remove_from_runqueue(SchedulingEntity& entity) override
     {   
         
-        syslog.messagef(LogLevel::DEBUG, "OS has asked to remove entity to runqueue, getting priority and name");
+        //syslog.messagef(LogLevel::DEBUG, "OS has asked to remove entity to runqueue, getting priority and name");
         
         UniqueIRQLock l;
 
         SchedulingEntityPriority::SchedulingEntityPriority entity_priority = entity.priority();
-        syslog.messagef(LogLevel::DEBUG, "Got priority");
+        //syslog.messagef(LogLevel::DEBUG, "Got priority");
 
         const infos::util::String entity_name = entity.name();
-        syslog.messagef(LogLevel::DEBUG, "Got name %s!", entity_name.c_str());
+        //syslog.messagef(LogLevel::DEBUG, "Got name %s!", entity_name.c_str());
         
         //REALTIME
         if (entity_priority == SchedulingEntityPriority::REALTIME) {    
@@ -122,7 +122,7 @@ public:
 
         //IDLE - should not happen
         else {
-            syslog.messagef(LogLevel::DEBUG, "IDLE process to add");
+            syslog.messagef(LogLevel::DEBUG, "trying to remove IDLE process");
         }
     }
 
@@ -133,7 +133,7 @@ public:
      */
     SchedulingEntity *pick_next_entity() override
     {   
-        syslog.messagef(LogLevel::DEBUG, "OS has asked for a scheduling event occurs, to cause the next eligible entity to be chosen");
+        //syslog.messagef(LogLevel::DEBUG, "OS has asked for a scheduling event occurs, to cause the next eligible entity to be chosen");
         
         //look at the different queues of priorities of the thread, return top of queue if last process left
         //round-robin fashion to finish/point-to the current process to non-empty highest priority queue 
@@ -142,45 +142,45 @@ public:
         //start with realtime queue 
         if (!realtime_runqueue.empty())  {
             UniqueIRQLock l;
-            syslog.messagef(LogLevel::DEBUG, "REALTIME(%d) process(s) left to execute",realtime_runqueue.count());
+            //syslog.messagef(LogLevel::DEBUG, "REALTIME(%d) process(s) left to execute",realtime_runqueue.count());
             //get the first entity on top of the queue 
             SchedulingEntity *entity = realtime_runqueue.dequeue(); 
             //put at the end of queue and return entity 
             realtime_runqueue.enqueue(entity);
-            return realtime_runqueue.first(); 
+            return entity; 
         } 
         
         //realtime queue is empty so move to interactive 
         else if (!interactive_runqueue.empty())  {
             UniqueIRQLock l;
-            syslog.messagef(LogLevel::DEBUG, "INTERACTIVE(%d) process(s) left to execute",interactive_runqueue.count());
-            SchedulingEntity *entity = daemon_runqueue.dequeue(); 
+            //syslog.messagef(LogLevel::DEBUG, "INTERACTIVE(%d) process(s) left to execute",interactive_runqueue.count());
+            SchedulingEntity *entity = interactive_runqueue.dequeue(); 
             interactive_runqueue.enqueue(entity);
-            return  interactive_runqueue.first(); 
+            return entity; 
         } 
         
         //interactive  queue is empty so move to daemon
         else if (!normal_runqueue.empty())  {
             UniqueIRQLock l;
-            syslog.messagef(LogLevel::DEBUG, "NORMAL process(%d) left to execute", normal_runqueue.count());
-            SchedulingEntity *entity = daemon_runqueue.remove(); 
+            //syslog.messagef(LogLevel::DEBUG, "NORMAL process(%d) left to execute", normal_runqueue.count());
+            SchedulingEntity *entity = normal_runqueue.dequeue(); 
             normal_runqueue.enqueue(entity);
-            return normal_runqueue.first(); 
+            return entity; 
         } 
         
         //daemon queue is empty so return null
         else if (daemon_runqueue.empty()) {
-            syslog.messagef(LogLevel::DEBUG, "Nothing left to execute");
+            //syslog.messagef(LogLevel::DEBUG, "Nothing left to execute");
             return NULL;
         }
         
         //get top of daemon queue
         else  {
             UniqueIRQLock l;
-            syslog.messagef(LogLevel::DEBUG, "DAEMON(%d) process left to execute",daemon_runqueue.count());
+            //syslog.messagef(LogLevel::DEBUG, "DAEMON(%d) process left to execute",daemon_runqueue.count());
             SchedulingEntity *entity = daemon_runqueue.dequeue(); 
             daemon_runqueue.enqueue(entity);
-            return daemon_runqueue.first();  
+            return entity;  
         }
     }
 
