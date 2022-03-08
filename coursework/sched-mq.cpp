@@ -38,42 +38,58 @@ public:
      */
     void add_to_runqueue(SchedulingEntity& entity) override
     {           
-        int entity_priority = entity.priority();
+        syslog.messagef(LogLevel::DEBUG, "OS has asked to add enitity to runqueue, getting priority and name");
+        
+
+        SchedulingEntityPriority entity_priority = entity.priority();
+        syslog.messagef(LogLevel::DEBUG, "Got priority!");
+
         infos::util::String entity_name = entity.name().c_str();
+        syslog.messagef(LogLevel::DEBUG, "Got name!");
 
         //add runnable task to runqueue of the correct priority 
-        syslog.messagef(LogLevel::DEBUG, "Adding scheduling entity {%s} to runqueue--%s--",entity_name,entity_priority)); 
+        syslog.messagef(LogLevel::DEBUG, "Adding scheduling entity {%s} to runqueue--%s--",entity_name,entity_priority); 
 
         //REALTIME
         if (entity_priority == SchedulingEntityPriority::REALTIME) {
             UniqueIRQLock l;
             syslog.messagef(LogLevel::DEBUG, "Lock implemented for {%s} : REALTIME",entity_name);
+            
             realtime_runqueue.enqueue(&entity);
-            syslog.messagef(LogLevel::DEBUG, "SCH: Added entitity {%s} of priority REALTIME/%s to runqueue",entity_name,entity_priority);
+            syslog.messagef(LogLevel::DEBUG, "Adding entitity {%s} from REALTIME",entity_name);
         }
 		
         //INTERACTIVE
         else if (entity_priority == SchedulingEntityPriority::INTERACTIVE) {
             UniqueIRQLock l;
             syslog.messagef(LogLevel::DEBUG, "Lock implemented for {%s} : INTERACTIVE",entity_name);
+            
             interactive_runqueue.enqueue(&entity);
-            syslog.messagef(LogLevel::DEBUG, "Adding entitity {%s} of priority INTERACTIVE/%s to runqueue",entity_name,entity_priority);
+            syslog.messagef(LogLevel::DEBUG, "Adding entitity {%s} from INTERACTIVE",entity_name);
         }
 
         //NORMAL
         else if (entity_priority == SchedulingEntityPriority::NORMAL) {
             UniqueIRQLock l;
-            syslog.messagef(LogLevel::DEBUG, "Lock implemented for entitity {%s} : NORMAL/%s",entity_name,entity_priority);
+            syslog.messagef(LogLevel::DEBUG, "Lock implemented for entitity {%s} : NORMAL",entity_name);
+            
             normal_runqueue.enqueue(&entity);
-            syslog.messagef(LogLevel::DEBUG, "Adding entitity {%s} of priority NORMAL/%s to runqueue",entity_name,entity_priority);
+            syslog.messagef(LogLevel::DEBUG, "Adding entitity {%s} from NORMAL",entity_name);
         }
 
         //DAEMON
-        else {
+        else  if (entity_priority == SchedulingEntityPriority::DAEMON) {
             UniqueIRQLock l;
-            syslog.messagef(LogLevel::DEBUG, "Lock implemented for entitity {%s} : DAEMON/%s",entity_name,entity_priority);
+            syslog.messagef(LogLevel::DEBUG, "Lock implemented for entitity {%s} : DAEMON",entity_name);
+            
             daemon_runqueue.enqueue(&entity);
-            syslog.messagef(LogLevel::DEBUG, "Adding entitity {%s} of priority DAEMON/%s to runqueue",entity_name,entity_priority);
+            syslog.messagef(LogLevel::DEBUG, "Removing entitity {%s} of priority DAEMON",entity_name);
+        }
+
+        //IDLE - should not happen
+        else {
+
+            syslog.messagef(LogLevel::DEBUG, "IDLE process so nothing to add");
         }
     }
 
@@ -83,9 +99,14 @@ public:
      */
     void remove_from_runqueue(SchedulingEntity& entity) override
     {   
+        
+        syslog.messagef(LogLevel::DEBUG, "OS has asked to remove enitity to runqueue, getting priority and name");
 
         int entity_priority = entity.priority();
+        syslog.messagef(LogLevel::DEBUG, "Got priority!");
+
         infos::util::String entity_name = entity.name().c_str();
+        syslog.messagef(LogLevel::DEBUG, "Got name!");
         
         //task is no longer eligible, so try to remove from its runqueue 
         syslog.messagef(LogLevel::DEBUG, "Removing scheduling entity {%s} from --%s--runqueue",entity_name,entity_priority); 
@@ -119,12 +140,17 @@ public:
         }
 
         //DAEMON
-        else {
+        else if (entity_priority == SchedulingEntityPriority::DAEMON) {
             UniqueIRQLock l;
             syslog.messagef(LogLevel::DEBUG, "Lock implemented for entitity {%s} : DAEMON",entity_name);
-            
+    
             daemon_runqueue.remove(&entity);
             syslog.messagef(LogLevel::DEBUG, "Removing entitity {%s} of priority DAEMON",entity_name);
+        }
+
+        //IDLE - should not happen
+        else {
+            syslog.messagef(LogLevel::DEBUG, "IDLE process to add");
         }
     }
 
@@ -135,6 +161,8 @@ public:
      */
     SchedulingEntity *pick_next_entity() override
     {   
+        syslog.messagef(LogLevel::DEBUG, "OS has asked for a scheduling event occurs, to cause the next eligible entity to be chosen");
+        
         //look at the different queues of priorities of the thread, return top of queue if last process left
         //round-robin fashion to finish/point-to the current process to non-empty highest priority queue 
         //otherwise go to the next priority queue 
@@ -175,15 +203,13 @@ public:
         }
         
         //get top of daemon queue
-        else {
+        else  {
             UniqueIRQLock l;
             syslog.messagef(LogLevel::DEBUG, "DAEMON process left to execute\n");
             SchedulingEntity *entity = daemon_runqueue.dequeue(); 
             daemon_runqueue.enqueue(entity);
             return daemon_runqueue.first();  
         }
-        //syslog.messagef(LogLevel::DEBUG, "");
-        return NULL;
     }
 
 private:
