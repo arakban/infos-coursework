@@ -59,18 +59,21 @@ private:
 		// calc the PFN of buddy - virtual memory address 
 		// if PFN is aligned to the next order, then the buddy is the next block in this order (i.e. front of this page),
 		// otherwise its in the previous block (so behind this page)
+		
+		uint64_t buddy_pfn;
 		if (is_aligned(pgd,(order+1))) {
 			syslog.messagef(LogLevel::DEBUG,"Page is aligned to next order, so buddy is in next block");
-			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block;
+			buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block;
 			syslog.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
 		} else {
 			syslog.messagef(LogLevel::DEBUG,"Page is aligned with order, so buddy is in previous block");
-			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block;
+			buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block;
 			syslog.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
 		}
 
-		PageDescriptor *buddy_pgn = infos::mm:PageAllocator::pfn_to_pgd(buddy_pfn);
-		return buddy_pgn;
+
+		PageDescriptor *buddy_pgd = sys.mm().pgalloc().pfn_to_pgd(buddy_pfn);
+		return buddy_pgd;
 	}
 
 	/**
