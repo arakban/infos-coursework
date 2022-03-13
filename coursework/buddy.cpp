@@ -50,23 +50,26 @@ private:
         //ensure that the order is within range 
 		assert(order >= MAX_ORDER);
 
+		//perform a shift left by by that order
+		uint64_t pages_per_block = (1 << order); 
+
 		//check alignment of PGD, if it not correctly alligned, we can't find a buddy 
 		assert(!is_aligned(pgd,order)); 
 		 
-		// calc the PFN of buddy
-		// if PFN is aligned to the next order, then the buddy is the next block in this order (i..e front of this page),
+		// calc the PFN of buddy - virtual memory address 
+		// if PFN is aligned to the next order, then the buddy is the next block in this order (i.e. front of this page),
 		// otherwise its in the previous block (so behind this page)
-		if (is_aligned(pgd,(order+1)) {
-			sys.messagef(LogLevel::DEBUG,"Page is aligned to next order, so buddy is in next block");
-			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block(order);
-			sys.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
+		if (is_aligned(pgd,(order+1))) {
+			syslog.messagef(LogLevel::DEBUG,"Page is aligned to next order, so buddy is in next block");
+			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block;
+			syslog.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
 		} else {
-			sys.messagef(LogLevel::DEBUG,"Page is aligned with order, so buddy is in previous block");
-			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block(order);
-			sys.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
+			syslog.messagef(LogLevel::DEBUG,"Page is aligned with order, so buddy is in previous block");
+			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block;
+			syslog.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
 		}
 
-		PageDescriptor buddy_pgn = sys.mm().pgalloc().pfn_to_pgd(buddy_pfn);
+		PageDescriptor *buddy_pgn = infos::mm:PageAllocator::pfn_to_pgd(buddy_pfn);
 		return buddy_pgn;
 	}
 
