@@ -22,6 +22,23 @@ using namespace infos::util;
 class BuddyPageAllocator : public PageAllocatorAlgorithm
 {
 private:
+	/** Given a page descriptor, and an order, returns if the page is correctly aligned with thatorder  
+	 * @param pgd The page descriptor to find the buddy for.
+	 * @param order The order in which the page descriptor lives.
+	 * @return Returns TRUE if aligned for that order, false otherwise 
+	 */
+	static inline constexpr uint64_t is_aligned(const PageDescriptor *pgd, int order) {
+		//perform a shift left by by that order
+		uint64_t pages_per_block = (1 << order); 
+
+		//get the page frame number of this page/pdg 
+		pfn_t pfn = sys.mm().pgalloc().pgd_to_pfn(pgd); 
+
+		//check alignment of PGD, if it not correctly alligned, we can't find a buddy 
+		return pfn % pages_per_block == 0; 
+
+	}
+
 	/** Given a page descriptor, and an order, returns the buddy PGD.  The buddy could either be
 	 * to the left or the right of PGD, in the given order.
 	 * @param pgd The page descriptor to find the buddy for.
@@ -30,7 +47,27 @@ private:
 	 */
 	PageDescriptor *buddy_of(PageDescriptor *pgd, int order)
 	{
-        // TODO: Implement me!
+        //ensure that the order is within range 
+		assert(order >= MAX_ORDER);
+
+		//check alignment of PGD, if it not correctly alligned, we can't find a buddy 
+		assert(!is_aligned(pgd,order)); 
+		 
+		// calc the PFN of buddy
+		// if PFN is aligned to the next order, then the buddy is the next block in this order (i..e front of this page),
+		// otherwise its in the previous block (so behind this page)
+		if (is_aligned(pgd,(order+1)) {
+			sys.messagef(LogLevel::DEBUG,"Page is aligned to next order, so buddy is in next block");
+			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block(order);
+			sys.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
+		} else {
+			sys.messagef(LogLevel::DEBUG,"Page is aligned with order, so buddy is in previous block");
+			uint64_t buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) - pages_per_block(order);
+			sys.messagef(LogLevel::DEBUG,"Buddy pfn calc: %s", buddy_pfn);
+		}
+
+		PageDescriptor buddy_pgn = sys.mm().pgalloc().pfn_to_pgd(buddy_pfn);
+		return buddy_pgn;
 	}
 
 	/**
@@ -43,7 +80,8 @@ private:
 	 */
 	PageDescriptor *split_block(PageDescriptor **block_pointer, int source_order)
 	{
-        // TODO: Implement me!
+        //check alignment of PGD, if it not correctly alligned, we can't split the blockm
+		if (!is_aligned(*block_pointer, source_order)) return NULL; 
 	}
 
 	/**
