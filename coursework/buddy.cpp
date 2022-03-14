@@ -23,24 +23,14 @@ class BuddyPageAllocator : public PageAllocatorAlgorithm
 {
 private:
 
-	/** Given an order, returns the number pages in block for that given order
-	 * @param order The order in which the page descriptor lives.
-	 * @return Returns the integer rep of number of blocks that order can hold
-	 */
-	static inline constexpr uint64_t pages_in_block(int order) {
-		//perform a shift left of 1 by by that order, so in block 0 its 1 pages per block, in block 1 is 2 and so on
-		uint64_t pages = (1 << order); 
-		return pages; 
-	}
-
 	/** Given a page descriptor, and an order, returns if the page is correctly aligned with that order  
 	 * @param pgd The page descriptor to find the buddy for.
 	 * @param order The order in which the page descriptor lives.
 	 * @return Returns TRUE if aligned for that order, false otherwise 
 	 */
-	static inline constexpr uint64_t is_aligned(const PageDescriptor *pgd, int order) {
+	bool is_aligned(const PageDescriptor *pgd, int order) {
 		//perform a shift left by by that order
-		uint64_t pages_per_block = pages_in_block(order); 
+		uint64_t pages_per_block = this->pages_in_block(order); 
 
 		//get the page frame number of this page/pdg 
 		pfn_t pfn = sys.mm().pgalloc().pgd_to_pfn(pgd); 
@@ -48,6 +38,16 @@ private:
 		//check alignment of PGD, if it not correctly alligned, we can't find a buddy 
 		return pfn % pages_per_block == 0; 
 
+	}
+
+	/** Given an order, returns the number pages in block for that given order
+	 * @param order The order in which the page descriptor lives.
+	 * @return Returns the integer rep of number of blocks that order can hold
+	 */
+	uint64_t pages_in_block(int order) {
+		//perform a shift left of 1 by by that order, so in block 0 its 1 pages per block, in block 1 is 2 and so on
+		uint64_t pages = (1 << order); 
+		return pages; 
 	}
 
 	/** Given a page descriptor, and an order, returns the buddy PGD.  The buddy could either be
@@ -62,17 +62,17 @@ private:
 		assert(order > MAX_ORDER); 
 
 		//perform a shift left by by that order
-		uint64_t pages_per_block = pages_in_block(order); 
+		uint64_t pages_per_block = this->pages_in_block(order); 
 
 		//check alignment of PGD, if it not correctly alligned, we can't find a buddy 
-		assert(!is_aligned(pgd,order)); 
+		assert(!this->is_aligned(pgd,order)); 
 		 
 		// calc the PFN of buddy - virtual memory address 
 		// if PFN is aligned to the next order, then the buddy is the next block in this order (i.e. front of this page),
 		// otherwise its in the previous block (so behind this page)
 		
 		uint64_t buddy_pfn;
-		if (is_aligned(pgd,(order+1))) {
+		if (this->is_aligned(pgd,(order+1))) {
 			syslog.messagef(LogLevel::DEBUG,"Page is aligned to next order, so buddy is in next block");
 			//add to virtual address of page 
 			buddy_pfn = sys.mm().pgalloc().pgd_to_pfn(pgd) + pages_per_block;
@@ -93,8 +93,9 @@ private:
 	 * insert the block into a free list
 	 * @param block_pointer A pointer to a pointer containing the beginning of a block of free memory.
 	 * @param next_order The order in which the insert the block to
+	 * @return Returns the area of free-list that is inserted
 	 */
-	void insert_block(PageDescriptor *block_pgd, int next_order) {
+	PageDescriptor **insert_block(PageDescriptor *block_pgd, int next_order) {
 		syslog.messagef(LogLevel::DEBUG,"buddy algo called to insert block");
 		//the buddy allocator maintains a list of free areas for each order, get that array for this particular order we are inserting into
 		PageDescriptor **area = &_free_areas[next_order];
@@ -108,14 +109,15 @@ private:
 		//move the current pointer of free-area where we are gonna insert the incoming block to next block
 		block_pgd->next_free = *area;
 		*area = block_pgd;
-		syslog.messagef(LogLevel::DEBUG,"inserted block into free_area list");
+		syslog.messagef(LogLevel::DEBUG,"inserted block %s into free_area list", block_pgd);
+		return area;
 	}
 
 	/**
-	 * Given a pointer to a block of memory to be removed from an order this function will
-	 * remove the block from that area
+	 * Given a pointer to a block of free_memory, remove the block from that area
 	 * @param block_pointer A pointer to a pointer containing the beginning of a block of free memory.
 	 * @param next_order The order in which the remove the block from
+	 * @return Returns the area of free-list that is removed
 	 */
 	void remove_block(PageDescriptor *block_pgd, int next_order) {
 		syslog.messagef(LogLevel::DEBUG,"buddy algo called to remove block");
@@ -134,7 +136,7 @@ private:
 		//remove the current page residing in that part of free-list, by pointing to the block_pointer->next_free that NULL/empty, so inverse insert_block
 		*area = block_pgd->next_free;
 		block_pgd->next_free = NULL;
-		syslog.messagef(LogLevel::DEBUG,"removed block from free_area");
+		syslog.messagef(LogLevel::DEBUG,"removed block %s from free_area", *area);
 	}
 
 	/**
@@ -148,7 +150,7 @@ private:
 	PageDescriptor *split_block(PageDescriptor **block_pointer, int source_order)
 	{
         //check alignment of PGD, if it not correctly alligned, we can't split the block
-		assert(is_aligned(*block_pointer, source_order)); 
+		assert(this->is_aligned(*block_pointer, source_order)); 
 
 		//now split block, as long as the source order is above 0 -> there is no order below zero!
 		if (source_order == 0) return *block_pointer;
@@ -160,9 +162,9 @@ private:
 		PageDescriptor *block_two = block_one + pages_lower_block;
 
 		//now remove the block in that order starting at pgd of block one, and add the two new blocks in the order below 
-		remove_block(block_one,source_order);
-		insert_block(block_one,lower_order);
-		insert_block(block_two,lower_order);
+		this->remove_block(block_one,source_order);
+		this->insert_block(block_one,lower_order);
+		this->insert_block(block_two,lower_order);
 
 		//return the left-hand side of the new block, i.e. the start of the first block
 		return block_one;
@@ -177,7 +179,7 @@ private:
 	PageDescriptor **merge_block(PageDescriptor **block_pointer, int source_order)
 	{
         //check alignment of PGD, if it not correctly alligned, we can't split the block
-		assert(is_aligned(*block_pointer, source_order)); 
+		assert(this->is_aligned(*block_pointer, source_order)); 
 
 		//now merge blocks, as long as the source order is not in the top most order
 		if (source_order == MAX_ORDER) return block_pointer;
@@ -185,22 +187,22 @@ private:
 		//the two blocks, one will point to current block pointer address and next block will point to end of that block (in lower order)
 		int higher_order = source_order + 1;
 		PageDescriptor *block_one = *block_pointer;
-		uint64_t pages_lower_block = pages_in_block(higher_order); 
+		uint64_t pages_lower_block = this->pages_in_block(higher_order); 
 		//use buddy_of to find the buddy of original block
-		PageDescriptor *block_two = buddy_of(*block_pointer,source_order);
+		PageDescriptor *block_two = this->buddy_of(*block_pointer,source_order);
 
 		//remove the pages from source order
-		remove_block(block_one,source_order);
-		remove_block(block_two,source_order);
+		this->remove_block(block_one,source_order);
+		this->remove_block(block_two,source_order);
 
 		//add merged blocks into next (higher) order
 		if (block_two>block_one) {
 			//merged block starts at block one
-			insert_block(block_one,higher_order);	
+			this->insert_block(block_one,higher_order);	
 		}
 		else {
 			//merged block starts at block two
-			insert_block(block_two,higher_order);
+			this->insert_block(block_two,higher_order);
 		}
 	}
 
@@ -215,14 +217,16 @@ public:
 	{
         int curr_order = order;
 
-		//iterate over each order till you find a highest order that is empty
+		//iterate over each order above order till you find a highest order that is empty
+		//Remember: the caller does not care where in memory these pages are, just that the pages returned are
+		//contiguous.
 		while (curr_order<=MAX_ORDER && _free_areas[curr_order] == NULL) {
 			curr_order++;
 		}
 
 		//allocation failed, we reached the top most order
 		if (curr_order>MAX_ORDER) {
-			syslog.messagef(LogLevel::DEBUG,"allocation failed, we counted to order: %s", curr_order);
+			syslog.messagef(LogLevel::DEBUG,"allocation failed, we counted to high! We came to order: %s", curr_order);
 			return NULL;
 		}
 
@@ -230,12 +234,12 @@ public:
 		PageDescriptor *block = _free_areas[curr_order];
 
 		//iteratively split blocks till target order is reached (binary buddy system - https://www.geeksforgeeks.org/operating-system-allocating-kernel-memory-buddy-system-slab-system/)
-		for (int i=curr_order; i>order; i--){
-			block = split_block(&block,i);
+		for (int i = curr_order; i>order; i--){
+			block = this->split_block(&block,i);
 		}
 
-		//remove the block of contigous pages from order as its been allocated (memory management core will update status to ALLOCATED)
-		remove_block(block, order);
+		//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
+		this->remove_block(block, order);
 		//return the first pdg in this linked list of allocated blocks
 		return block;
 	}
@@ -248,12 +252,32 @@ public:
     void free_pages(PageDescriptor *pgd, int order) override
     {
 		//assert that block is aligned with order
-		assert(is_aligned(pgd,order));
+		assert(this->is_aligned(pgd,order));
 
-		//lets put the block back into free-areas
-		PageDescriptor **free_memory = insert_block(pgd,order);
+		//Free pages should be put back into the free lists, coalescing buddies back up to the
+		//maximum order as per the buddy allocation algorithm.
+		PageDescriptor **base  = insert_block(pgd,order);
+		//get pointer to first buddy that could be free
+		PageDescriptor *potential_buddy = _free_areas[order];
+		//get buddy of base
+		PageDescriptor *buddy_of_base = this->buddy_of(*base,order);
 
-
+		//iterate over potential buddies, start from current order and move up till MAX_ORDER
+		for (int curr_order = order; curr_order<=MAX_ORDER; curr_order++){
+			if (buddy_of_base != potential_buddy) {  //we can't find block's buddy at this pointer to free_area
+				//move onto the next block in current order
+				potential_buddy = potential_buddy->next_free;
+				//stay in same order
+				i--;
+			}
+			else (buddy_of_base == potential_buddy) { //base's buddy is free, so we can merge to base
+				base = this->merge_block(base,curr_order);
+				//go to next order
+				potential_buddy = _free_areas[curr_order];
+				//new buddy of new base
+				buddy_of_base = this->buddy_of(*base,curr_order);
+			}
+		}
     }
 
     /**
@@ -263,7 +287,34 @@ public:
      */
     virtual void insert_page_range(PageDescriptor *start, uint64_t count) override
     {
-        // TODO: Implement me!
+        //replicate the logic of free_pages, but now you start and how many pages to add
+		
+		//start from order 0
+		int curr_order = 0; 
+		//Free pages should be put back into the free lists, coalescing buddies back up to the
+		//maximum order as per the buddy allocation algorithm.
+		PageDescriptor **base  = insert_block(pgd,order);
+		//get pointer to first buddy that could be free
+		PageDescriptor *potential_buddy = _free_areas[order];
+		//get buddy of base
+		PageDescriptor *buddy_of_base = this->buddy_of(*base,order);
+
+		//iterate over potential buddies, start from current order and move up till MAX_ORDER
+		for (int curr_order = order; curr_order<=MAX_ORDER; curr_order++){
+			if (buddy_of_base != potential_buddy) {  //we can't find block's buddy at this pointer to free_area
+				//move onto the next block in current order
+				potential_buddy = potential_buddy->next_free;
+				//stay in same order
+				i--;
+			}
+			else (buddy_of_base == potential_buddy) { //base's buddy is free, so we can merge to base
+				base = this->merge_block(base,curr_order);
+				//go to next order
+				potential_buddy = _free_areas[curr_order];
+				//new buddy of new base
+				buddy_of_base = this->buddy_of(*base,curr_order);
+			}
+		}
     }
 
     /**
@@ -272,8 +323,26 @@ public:
      * @param count The number of page descriptors to make unavailable.
      */
     virtual void remove_page_range(PageDescriptor *start, uint64_t count) override
-    {
-        // TODO: Implement me!
+    {	
+		//start from max order
+		int curr_order = MAX_ORDER; 
+		//max order can allocate max number of pages
+		uint64_t pages_can_allocate = this->pages_in_block(curr_order);
+		//iteratively split blocks till target count is reached (block same size or just bigger than count)
+		while (pages_can_allocate >= count && curr_order > 0){
+			start = this->split_block(&start,i);
+			curr_order;
+			this->pages_in_block(curr_order);
+		}
+
+		//allocation failed, we reached the top most order
+		if (curr_order==0) {
+			syslog.messagef(LogLevel::DEBUG,"allocation failed, we counted to low! We came to order: %s and needed to allocate %s pages", curr_order, count);
+			return NULL;
+		}
+		
+		//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
+		this->remove_block(start, curr_order);
     }
 
 	/**
