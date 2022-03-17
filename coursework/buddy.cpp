@@ -32,12 +32,11 @@ private:
 		//perform a shift left by by that order
 		uint64_t pages_per_block = this->pages_in_block(order); 
 
-		//get the page frame number of this page/pdg 
+		//get the page frame number of this page/pdg -> right shift to see pgd no a multiple 2^order
 		pfn_t pfn = sys.mm().pgalloc().pgd_to_pfn(pgd); 
 
 		//check alignment of PGD, if it not correctly alligned, we can't find a buddy 
-		return pfn % pages_per_block == 0; 
-
+		return (pfn % pages_per_block == 0); 
 	}
 
 	/** Given an order, returns the number pages in block for that given order
@@ -294,18 +293,20 @@ public:
     }
 
     /**
-     * Marks a range of pages as available for allocation.
+     * Marks a range of pages as available for allocation -> put it back in _free_areas
      * @param start A pointer to the first page descriptors to be made available.
      * @param count The number of page descriptors to make available.
      */
     virtual void insert_page_range(PageDescriptor *start, uint64_t count) override
     {
         //replicate the logic of free_pages, but now you start and how many pages to make available. not order of block
+		mm_log.messagef(LogLevel::DEBUG,"called to insert page range");
+		mm_log.messagef(LogLevel::DEBUG,"free_ares: %s", _free_areas);
 		
 		//start from order 0
 		int curr_order = 0; 
 		//keep a track of what current order can allocate in terms of max number of pages
-		uint64_t pages_can_allocate = this->pages_in_block(curr_order);
+		uint64_t pages_can_allocate = pages_in_block(curr_order);
 		//point to first pfn - first pdg to be freed
 		PageDescriptor **base  = insert_block(start,curr_order);
 		//get pointer to first buddy that could be free, pdg/base should not be in free list 
@@ -314,7 +315,7 @@ public:
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,curr_order);
 		
 		//iteratively merge blocks up till target count is reached (block same size or just bigger than count)
-		while (pages_can_allocate < count && curr_order < MAX_ORDER) {
+		while (pages_can_allocate <= count && curr_order < MAX_ORDER) {
 			if (buddy_of_base != potential_buddy) {  
 				//we can't find block's buddy at this pointer to free_area
 				//move onto the next block in current order
@@ -341,7 +342,7 @@ public:
 
 		//allocation failed, we reached the top most order
 		if (curr_order >= MAX_ORDER) {
-			mm_log.messagef(LogLevel::DEBUG,"nsert_page_range failed, we counted too high!");
+			mm_log.messagef(LogLevel::DEBUG,"insert_page_range failed, we counted too high!");
 		} 
     }
 
@@ -381,7 +382,30 @@ public:
 	 */
 	bool init(PageDescriptor *page_descriptors, uint64_t nr_page_descriptors) override
 	{
-        // TODO: Implement me!
+        mm_log.messagef(LogLevel::DEBUG, "Buddy Allocator Initialising pgd=%p, add=0x%lx", page_descriptors, nr_page_descriptors);
+
+		//pointer to first pgd to be allocated
+		PageDescriptor *init_pgd = page_descriptors;
+		int pgd_count = 0;   //the nth pgd we are 
+		//get no. of blocks in max/top order	
+		int curr_order = MAX_ORDER;
+		int curr_blocksize = this->pages_in_block(curr_order);
+		int blocks = nr_page_descriptors/curr_blocksize;
+
+		//initially point to first pgd in *page_descriptors
+		_free_areas[curr_order] = init_pgd;
+
+		//build linked list
+		int curr_block = 0;
+		while (pgd_count < blocks) {
+			init_pgd->next_free = init_pgd + curr_blocksize;
+			init_pgd = init_pgd->next_free;
+			curr_block++;
+		}
+
+		init_pgd->next_free = NULL;
+		return True
+
 	}
 
 	/**
