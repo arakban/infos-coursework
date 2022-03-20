@@ -154,7 +154,7 @@ private:
 	 */
 	PageDescriptor *split_block(PageDescriptor **block_pointer, int source_order)
 	{	
-		mm_log.messagef(LogLevel::DEBUG,"splitting blocks");
+		mm_log.messagef(LogLevel::DEBUG,"Splitting blocks");
         //check alignment of PGD, if it not correctly alligned, we can't split the block
 		assert(this->is_aligned(*block_pointer, source_order)); 
 
@@ -173,6 +173,7 @@ private:
 		this->insert_block(block_two,lower_order);
 
 		//return the left-hand side of the new block, i.e. the start of the first block
+		mm_log.messagef(LogLevel::DEBUG,"Finished splitting blocks");
 		return block_one;
 	}
 
@@ -184,7 +185,7 @@ private:
 	 */
 	PageDescriptor **merge_block(PageDescriptor **block_pointer, int source_order)
 	{	
-		mm_log.messagef(LogLevel::DEBUG,"merging blocks");
+		mm_log.messagef(LogLevel::DEBUG,"Merging blocks");
         //check alignment of PGD, if it not correctly alligned, we can't split the block
 		assert(this->is_aligned(*block_pointer, source_order)); 
 
@@ -212,6 +213,7 @@ private:
 			//merged block starts at block two
 			this->insert_block(block_two,higher_order);
 		}
+		mm_log.messagef(LogLevel::DEBUG,"Finished merging blocks");
 	}
 
 public:
@@ -279,7 +281,9 @@ public:
 
 		//iterate over potential buddies, start from current order and move up till MAX_ORDER
 		for (int curr_order = order; curr_order<=MAX_ORDER; curr_order++){
-			if (buddy_of_base != potential_buddy) {  //we can't find block's buddy at this pointer to free_area
+			if (buddy_of_base != potential_buddy) {  
+				//we can't find block's buddy at this pointer to free_area
+				mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order");
 				//move onto the next block in current order
 				potential_buddy = potential_buddy->next_free;
 				//stay in same order
@@ -291,6 +295,7 @@ public:
 				potential_buddy = _free_areas[curr_order];
 				//new buddy of new base
 				buddy_of_base = this->buddy_of(*base,curr_order);
+				mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
 			}
 			else {
 				//we have a encountered a block of memory (potential buddy) that's not free - stop merging upwards
@@ -322,24 +327,25 @@ public:
 		//get buddy of base
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,curr_order);
 		
-		//iteratively merge blocks up till target count is reached (block same size or just bigger than count)
+		//iteratively merge blocks contigous up till target count is reached (block same size or just bigger than count)
 		while (pages_can_allocate <= count && curr_order < MAX_ORDER) {
-			if (buddy_of_base != potential_buddy) {  
+			if (potential_buddy != buddy_of_base) {  
 				//we can't find block's buddy at this pointer to free_area
-				//move onto the next block in current order
+				//so move onto the next block in current order
 				potential_buddy = potential_buddy->next_free;
 				//stay in same order
 				curr_order --;
 				mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order");
 			}
-			else if (buddy_of_base == potential_buddy) { 
-				//base's buddy is free, so we can merge to base
+			else if (potential_buddy == buddy_of_base) { 
+				//potential buddy is free, so we can merge to base, base now points pointer of merged block
 				base = this->merge_block(&start,curr_order);
+				
 				//go to higher order
 				curr_order++;
 				pages_can_allocate = this->pages_in_block(curr_order);
-				//go to next order
 				potential_buddy = _free_areas[curr_order];
+				
 				//new buddy of new base
 				buddy_of_base = this->buddy_of(*base,curr_order);
 				mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
