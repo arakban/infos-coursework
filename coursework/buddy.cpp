@@ -378,7 +378,7 @@ public:
      */
     virtual void remove_page_range(PageDescriptor *start, uint64_t count) override
     {	
-		mm_log.messagef(LogLevel::INFO,"Called to remove page range");
+		mm_log.messagef(LogLevel::INFO,"Called to remove page range, with start pdg=%p and count=%lx", start, count);
 		//start from max order
 		int curr_order = MAX_ORDER; 
 		//max order can allocate max number of pages
