@@ -23,7 +23,7 @@ class BuddyPageAllocator : public PageAllocatorAlgorithm
 {
 private:
 
-	/** Given a page descriptor, and an order, returns if the page is correctly aligned with that order  
+	/** Given a page descriptor, and an order, returns if the block is alligne with that order
 	 * @param pgd The page descriptor to find the buddy for.
 	 * @param order The order in which the page descriptor lives.
 	 * @return Returns TRUE if aligned for that order, false otherwise 
@@ -47,6 +47,30 @@ private:
 		//perform a shift left of 1 by by that order, so in block 0 its 1 pages per block, in block 1 is 2 and so on
 		uint64_t pages = (1 << order); 
 		return pages; 
+	}
+
+	/** Given a starting page descriptor, and an count of pages to free, returns the order to start inserting
+	 * @param pgd The page descriptor 
+	 * @param order The order in which the page descriptor lives.
+	 * @return Returns an integer representing the lowest order that can fit the count of pages needed 
+	 */
+	int lowest_possible_block(const PageDescriptor *pgd, uint64_t count) {
+		mm_log.messagef(LogLevel::DEBUG,"Getting lowest possible aligned order");
+		
+		//let's first find the highest aligned order to pgd
+		int highest_aligned_order = this->MAX_ORDER;
+		uint64_t pages_can_allocate = this->pages_in_block(MAX_ORDER);
+
+		for (highest_aligned_order = MAX_ORDER, highest_aligned_order >= 0 && pages_can_allocate => count, highest_aligned_order--) {
+			if (!(is_aligned(pgd, highest_aligned_order))) { 
+				mm_log.messagef(LogLevel::DEBUG,"Got lowest possible aligned order");
+				return highest_aligned_order + 1; 
+			}
+			pages_can_allocate = this->pages_in_block(highest_aligned_order);
+		}
+		
+		mm_log.messagef(LogLevel::DEBUG,"Got lowest possible aligned order");
+		return highest_aligned_order;
 	}
 
 	/** Given a page descriptor, and an order, returns the buddy PGD.  The buddy could either be
@@ -275,32 +299,28 @@ public:
 		//point to first pfn - first pdg to be freed
 		PageDescriptor **base  = insert_block(pgd,order);
 		//get pointer to first buddy that could be free, pdg/base should not be in free list 
-		PageDescriptor *potential_buddy = _free_areas[order];
+		PageDescriptor *potential_buddy = this->_free_areas[order];
 		//get buddy of base
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,order);
 
 		//iterate over potential buddies, start from current order and move up till MAX_ORDER
-		for (int curr_order = order; curr_order<=MAX_ORDER; curr_order++){
+		for (int curr_order = order; curr_order <= MAX_ORDER; curr_order++){
 			if (buddy_of_base != potential_buddy) {  
-				//we can't find block's buddy at this pointer to free_area
+				//we can't find block's buddy at this pointer to free_area - area of free_list is not NULL
 				mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order");
 				//move onto the next block in current order
 				potential_buddy = potential_buddy->next_free;
 				//stay in same order
 				curr_order --;
 			}
-			else if (buddy_of_base == potential_buddy) { //base's buddy is free, so we can merge to base
+			else if (buddy_of_base == potential_buddy) { 
+				//base's buddy is free, so we can merge to base
 				base = this->merge_block(base,curr_order);
 				//go to next order
-				potential_buddy = _free_areas[curr_order];
+				potential_buddy = this->_free_areas[curr_order];
 				//new buddy of new base
 				buddy_of_base = this->buddy_of(*base,curr_order);
 				mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
-			}
-			else {
-				//we have a encountered a block of memory (potential buddy) that's not free - stop merging upwards
-				mm_log.messagef(LogLevel::DEBUG,"we have a encountered a block of memory (potential buddy) that's not free");
-				break;
 			}
 		}
 		mm_log.messagef(LogLevel::DEBUG,"finished free pages");
@@ -316,51 +336,15 @@ public:
         //replicate the logic of free_pages, but now you know start and how many pages to make available, not order of block
 		mm_log.messagef(LogLevel::DEBUG,"Called to insert page range");
 		
-		//start from order 0
-		int curr_order = 0; 
-		//keep a track of what current order can allocate in terms of max number of pages
-		uint64_t pages_can_allocate = pages_in_block(curr_order);
-		//point to first pfn - first pdg to be freed
-		PageDescriptor **base  = insert_block(start,curr_order);
-		//get pointer to first buddy that could be free, pdg/base should not be in free list 
-		PageDescriptor *potential_buddy = _free_areas[curr_order]; 
-		//get buddy of base
-		PageDescriptor *buddy_of_base = this->buddy_of(*base,curr_order);
-		
-		//iteratively merge blocks contigous up till target count is reached (block same size or just bigger than count)
-		while (pages_can_allocate <= count && curr_order < MAX_ORDER) {
-			if (potential_buddy != buddy_of_base) {  
-				//we can't find block's buddy at this pointer to free_area
-				//so move onto the next block in current order
-				potential_buddy = potential_buddy->next_free;
-				//stay in same order
-				curr_order --;
-				mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order");
-			}
-			else if (potential_buddy == buddy_of_base) { 
-				//potential buddy is free, so we can merge to base, base now points pointer of merged block
-				base = this->merge_block(&start,curr_order);
-				
-				//go to higher order
-				curr_order++;
-				pages_can_allocate = this->pages_in_block(curr_order);
-				potential_buddy = _free_areas[curr_order];
-				
-				//new buddy of new base
-				buddy_of_base = this->buddy_of(*base,curr_order);
-				mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
-			}
-			else {
-				//we have a encountered a block of memory (potential buddy) that's not free - stop merging upwards
-				mm_log.messagef(LogLevel::DEBUG,"we have a encountered a block of memory (potential buddy) that's not free");
-			}
+		//start get the highest order that can just about fit the number of contigous pages and loop we can allocate all
+		int curr_order = this->lowest_possible_block(start, count);
+		while (count > 0)  {
+			uint64_t pages_can_allocate = this->pages_in_block(curr_order);
+			insert_block(start,curr_order);
+			//now update pages allocated and move start pointer 
+			count = count - pages_can_allocate;
+			start = start + pages_cah_allocate; 
 		}
-
-		//allocation failed, we reached the top most order
-		if (curr_order >= MAX_ORDER) {
-			mm_log.messagef(LogLevel::DEBUG,"insert_page_range failed, we counted too high!");
-		} 
-		mm_log.messagef(LogLevel::DEBUG,"finished inserting page ranges");
     }
 
     /**

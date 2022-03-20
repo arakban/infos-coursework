@@ -1,5 +1,4 @@
-{
-	"folders": [
+"folders": [
 		{
 			"path": "infos"
 		},
@@ -12,12 +11,8 @@
 	],
 	"settings": {
 		"files.associations": {
-			"*.cpp": "cpp",
 			"*.tcc": "cpp",
-			"string": "cpp",
-			"bitset": "cpp",
-			"chrono": "cpp",
-			"algorithm": "cpp"
+			"string": "cpp"
 		}
 	}
 }
