@@ -230,11 +230,11 @@ private:
 		//add merged blocks into next (higher) order
 		if (block_two>block_one) {
 			//merged block starts at block one
-			this->insert_block(block_one,higher_order);	
+			return this->insert_block(block_one,higher_order);	
 		}
 		else {
 			//merged block starts at block two
-			this->insert_block(block_two,higher_order);
+			return this->insert_block(block_two,higher_order);
 		}
 		//mm_log.messagef(LogLevel::INFO,"Finished merging blocks");
 	}
@@ -348,7 +348,7 @@ public:
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,order);
 
 		//iterate over potential buddies (coalesce), start from current order and move up till MAX_ORDER
-		for (int curr_order = order; curr_order <= MAX_ORDER && count >= 0; curr_order++){
+		for (int curr_order = order; curr_order <= MAX_ORDER && count >= 0 && potential_buddy; curr_order++){
 			if (buddy_of_base != potential_buddy) {  
 				//we can't find block's buddy at this pointer to free_area - area of free_list is not NULL
 				//mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order: %d", order);
