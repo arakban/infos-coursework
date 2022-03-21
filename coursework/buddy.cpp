@@ -117,7 +117,7 @@ private:
 	/** Given a page descriptor, and an order, returns if the buddy is in the
 	 * @param start The page descriptor to check if in the free areas for the order
 	 * @param order The order in which we are searching the page descriptor for
-	 * @return Returns TRUE if aligned for that order, false otherwise 
+	 * @return Returns the if target is in a free-block is this order
 	 */
 	bool is_in_free(const PageDescriptor *target, int order) {
 		//pointer to the free block we are searching
@@ -126,7 +126,7 @@ private:
 		
 		while (free_block->next_free) {
 			//target is somewhere in the block we are looking at
-			if ((free_block <= target) && (free_block + block_size > target)) return true;        
+			if ((free_block <= target) && (free_block->next_free > target)) return true;        
 			free_block = free_block->next_free; 
 		}
 		return false;
@@ -176,7 +176,7 @@ private:
 			area = &(*area)->next_free;
 		}
 
-		//make sure block algo found exists
+		//make sure block exists
 		assert(*area == block_pgd);
 
 		//remove the current page residing in that part of free-list, by pointing to the block_pointer->next_free that NULL/empty, so inverse insert_block
@@ -270,10 +270,10 @@ public:
 		mm_log.messagef(LogLevel::INFO,"Called to allocate pages");
         int highest_order = order;
 
-		//iterate over each order above order till you find a highest order that is not allocated
+		//iterate over each order above inputed order till you find a highest order that is not allocated (non-empty in free list)
 		//Remember: the caller does not care where in memory these pages are, just that the pages returned are
 		//contiguous.
-		while (highest_order<=MAX_ORDER && _free_areas[highest_order] == NULL) {
+		while (highest_order <= MAX_ORDER && this->_free_areas[highest_order] == NULL) {
 			highest_order++;
 		}
 
@@ -284,7 +284,7 @@ public:
 		}
 
 		//we can allocated 2^order of contigous pages, point to that starting block
-		PageDescriptor *block = _free_areas[curr_order];
+		PageDescriptor *block = _free_areas[highest_order];
 
 		//iteratively split blocks till target order is reached (binary buddy system - https://www.geeksforgeeks.org/operating-system-allocating-kernel-memory-buddy-system-slab-system/)
 		for (int i = highest_order; i > order; i--) {
@@ -354,8 +354,8 @@ public:
 		mm_log.messagef(LogLevel::INFO, "Called to insert page range, with start pdg=%p and count=%lx", start, count);
 		
 		//get lowest order that could allocate count
-		int lowest_order = lowest_possible_order(start,count); 
-		PageDescriptor **base = insert_block(start,lowest_order);
+		int lowest_order = lowest_possible_order(start, count); 
+		PageDescriptor **base = insert_block(start, lowest_order);
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,lowest_order);
 
 		//iterate over order from lowest possible, start from current order and move up/merge if in order it till MAX_ORDER until we reach count
@@ -383,30 +383,30 @@ public:
 		mm_log.messagef(LogLevel::INFO,"Called to remove page range, with start pdg=%p and count=%lx", start, count);
 		
 		//get lowest order that could allocate count - to compensate not knowing order of pages to be allocated
-		int highest_order = lowest_possible_order(start, count); 
-
-		//now count up to the highest order that is allocated block in it
-		while (highest_order<MAX_ORDER && _free_areas[lowest_order] == NULL) {
+		int lowest_order = lowest_possible_order(start, count); 
+		int highest_order = lowest_order; 
+		//now count up to the highest order where the start page is available 
+		while (highest_order < MAX_ORDER && !is_in_free(start, highest_order)) {
 			highest_order++;
 		}
 
 		//we can allocate 2^order of contigous pages, point to that starting block in the free area
-		PageDescriptor *base = _free_areas[highest_order];
-		uint65_t can_allocate = pages_in_block(curr_order);; 
+		uint64_t can_allocate_max = pages_in_block(highest_order); 
 
-		//iterate over potential blocks, start from current order and split down until blocksize goes below count  
-		for (int curr_order = highest_order; curr_order >= 0 && can_allocate >= count; curr_order--) {
-			//we check to see if start page is in the free_list for this order
-			if (this->is_in_free(&start, curr_order)) {
-				//base's buddy is free, so we can merge to base
-				start = split_block(start, curr_order);
-				//mm_log.messagef(LogLevel::DEBUG,"split the block starting at pdg: pdg=%p to order %d and we can remove pages=%lx", start, curr_order, pages_in_block(curr_order));
+		//iterate over potential blocks, start from current higheat order and split down until blocksize goes below count  
+		for (int curr_order = highest_order; curr_order >= 0 && can_allocate_max >= count; curr_order--) {
+			//check alignment of start, if not aligned to start of its block we need to point to its 
+			start = split_block(&start, curr_order);
+			can_allocate_max = pages_in_block(curr_order);
+			mm_log.messagef(LogLevel::DEBUG,"split the block starting at pdg: pdg=%p to order %d and we can remove pages=%lx", start, curr_order, pages_in_block(curr_order));
+			
+			//time to exit loop and remove block if next block in lower order can't allocate 
+			if (can_allocate_max <= count) {
+				//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
+				remove_block(start, curr_order);
+				break; 
 			}
-			else break; 
 		}
-
-		//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
-		remove_block(start, curr_order);
 		mm_log.messagef(LogLevel::INFO,"Finished removing page range");
 		
     }
