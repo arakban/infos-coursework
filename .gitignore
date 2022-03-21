@@ -2,3 +2,5 @@
 *.o
 *.idea
 infos-coursework-solutions/
+.vscode/settings.json
+.DS_Store
