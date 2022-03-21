@@ -347,7 +347,7 @@ public:
 		//get buddy of base
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,order);
 
-		//iterate over potential buddies (coalesce), start from current order and move up till MAX_ORDER
+		//iterate over potential buddies (coalesce), start from current order and move up in order till MAX_ORDER until we reach count
 		for (int curr_order = order; curr_order <= MAX_ORDER && count >= 0 && potential_buddy; curr_order++){
 			if (buddy_of_base != potential_buddy) {  
 				//we can't find block's buddy at this pointer to free_area - area of free_list is not NULL
@@ -368,7 +368,7 @@ public:
 				//mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
 			}
 			else {
-				//potential buddy is
+				//potential buddy is NULL
 				break;
 			}
 		}
@@ -392,19 +392,17 @@ public:
 		//iteratively split blocks till target count is reached (block same size or just bigger than count)
 		while (pages_can_allocate >= count && curr_order > 0) {
 			start = this->split_block(&start,curr_order);
+			mm_log.messagef(LogLevel::DEBUG,"split the block starting at pdg: pdg=%p to order %d", start, curr_order-1);
 			//go to lower order
 			curr_order--;
 			pages_can_allocate = this->pages_in_block(curr_order);
 		}
 
-		//allocation failed, we reached the top most order
-		if (curr_order <= 0) {
-			mm_log.messagef(LogLevel::DEBUG,"remove_page_range failed, we counted too low!");
-		} else {
-			//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
-			this->remove_block(start, curr_order);
-			mm_log.messagef(LogLevel::INFO,"Finished removing page range");
-		}
+
+		//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
+		this->remove_block(start, curr_order);
+		mm_log.messagef(LogLevel::INFO,"Finished removing page range");
+		
     }
 
 	/**
