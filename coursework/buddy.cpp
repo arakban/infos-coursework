@@ -49,9 +49,9 @@ private:
 		return pages; 
 	}
 
-	/** Given a starting page descriptor, and an count of pages to free, returns the order to start inserting
+	/** Given a starting page descriptor, and an count of pages to free, returns the lowest order of the block that can hold that many pages
 	 * @param pgd The page descriptor 
-	 * @param order The order in which the page descriptor could live.
+	 * @param count The number of page descriptor do allocate/free
 	 * @return Returns an integer representing the lowest order that can fit the count of pages needed 
 	 */
 	int lowest_possible_order(const PageDescriptor *pgd, uint64_t count) {
@@ -168,8 +168,7 @@ private:
 	}
 
 	/**
-	 * Given a pointer to a block of free memory in the order "source_order", this function will
-	 * split the block in half, and insert it into the order below.
+	 * Given a pointer to a block of free memory in the order "source_order", this function will split the block in half, and insert it into the order below.
 	 * @param block_pointer A pointer to a pointer containing the beginning of a block of free memory.
 	 * @param source_order The order in which the block of free memory exists.  Naturally,
 	 * the split will insert the two new blocks into the order below.
@@ -186,14 +185,14 @@ private:
 		
 		//the two blocks, one will point to current block pointer address and next block will point to end of that block (in lower order)
 		int lower_order = source_order - 1;
+		uint64_t pages_lower_block = this->pages_in_block(lower_order);
 		PageDescriptor *block_one = *block_pointer;
-		uint64_t pages_lower_block = pages_in_block(lower_order); 
 		PageDescriptor *block_two = block_one + pages_lower_block;
 
 		//now remove the block in that order starting at pgd of block one, and add the two new blocks in the order below 
-		this->remove_block(block_one,source_order);
-		this->insert_block(block_one,lower_order);
-		this->insert_block(block_two,lower_order);
+		this->remove_block(block_one, source_order);
+		this->insert_block(block_one, lower_order);
+		this->insert_block(block_two, lower_order);
 
 		//return the left-hand side of the new block, i.e. the start of the first block
 		//mm_log.messagef(LogLevel::INFO,"Finished splitting blocks");
@@ -218,7 +217,6 @@ private:
 		//the two blocks, one will point to current block pointer address and next block will point to end of that block (in lower order)
 		int higher_order = source_order + 1;
 		PageDescriptor *block_one = *block_pointer;
-		uint64_t pages_lower_block = this->pages_in_block(higher_order); 
 		
 		//use buddy_of to find the buddy of original block
 		PageDescriptor *block_two = this->buddy_of(*block_pointer,source_order);
@@ -251,7 +249,7 @@ public:
 		mm_log.messagef(LogLevel::INFO,"Called to allocate pages");
         int curr_order = order;
 
-		//iterate over each order above order till you find a highest order that is empty
+		//iterate over each order above order till you find a highest order that is not allocated
 		//Remember: the caller does not care where in memory these pages are, just that the pages returned are
 		//contiguous.
 		while (curr_order<=MAX_ORDER && _free_areas[curr_order] == NULL) {
@@ -264,12 +262,12 @@ public:
 			return NULL;
 		}
 
-		//we can allocated 2^n of contigous pages, point to that starting order
+		//we can allocated 2^order of contigous pages, point to that starting block
 		PageDescriptor *block = _free_areas[curr_order];
 
 		//mm_log.messagef(LogLevel::DEBUG,"iteratively split blocks till target order is reached ");
 		//iteratively split blocks till target order is reached (binary buddy system - https://www.geeksforgeeks.org/operating-system-allocating-kernel-memory-buddy-system-slab-system/)
-		for (int i = curr_order; i>order; i--){
+		for (int i = curr_order; i>order; i--) {
 			block = this->split_block(&block,i);
 		}
 		//mm_log.messagef(LogLevel::DEBUG,"Finished splitting blocks");
@@ -303,7 +301,7 @@ public:
 		PageDescriptor *buddy_of_base = this->buddy_of(*base,order);
 
 		//iterate over potential buddies, start from current order and move up till MAX_ORDER
-		for (int curr_order = order; curr_order <= MAX_ORDER && potential_buddy ; curr_order++){
+		for (int curr_order = order; curr_order <= MAX_ORDER && potential_buddy; curr_order++){
 			if (buddy_of_base != potential_buddy) {  
 				//we can't find block's buddy at this pointer to free_area - area of free_list is not NULL
 				//mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order");
@@ -335,7 +333,7 @@ public:
         //replicate the logic of free_pages, but now you know start and how many pages to make available, not order of block
 		mm_log.messagef(LogLevel::INFO,"Called to insert page range, with start pdg=%p and count=%lx", start, count);
 		
-		//get lowest order that would allocate count
+		//get lowest order that could allocate count
 		int order = lowest_possible_order(start,count); 
 		//Free pages should be put back into the free lists, coalescing buddies back up to the
 		//maximum order as per the buddy allocation algorithm.
@@ -368,7 +366,7 @@ public:
 				//mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
 			}
 			else {
-				//potential buddy is NULL
+				//potential buddy is NULL - already available for allocation
 				break;
 			}
 		}
@@ -384,20 +382,54 @@ public:
     virtual void remove_page_range(PageDescriptor *start, uint64_t count) override
     {	
 		mm_log.messagef(LogLevel::INFO,"Called to remove page range, with start pdg=%p and count=%lx", start, count);
-		//start from max order
-		int curr_order = MAX_ORDER; 
-		//max order can allocate max number of pages
-		uint64_t pages_can_allocate = this->pages_in_block(curr_order);
 		
-		//iteratively split blocks till target count is reached (block same size or just bigger than count)
-		while (pages_can_allocate >= count && curr_order > 0) {
-			start = this->split_block(&start,curr_order);
-			mm_log.messagef(LogLevel::DEBUG,"split the block starting at pdg: pdg=%p to order %d", start, curr_order-1);
-			//go to lower order
-			curr_order--;
-			pages_can_allocate = this->pages_in_block(curr_order);
+		//get lowest order that could allocate count - to compensate not knowing order of pages to be allocated
+		int curr_order = lowest_possible_order(start,count); 
+
+		//now count up to the highest order that is unallocated
+		while (curr_order<=MAX_ORDER && _free_areas[curr_order] == NULL) {
+			curr_order++;
 		}
 
+		//allocation failed, we reached the top most order
+		if (curr_order>MAX_ORDER) {
+			mm_log.messagef(LogLevel::DEBUG,"allocation failed, we counted to high!");
+		}
+
+		//we can allocate 2^order of contigous pages, point to that starting block
+		PageDescriptor *base = _free_areas[curr_order];
+		//get pointer to first buddy that could be an allocated pg, pdg/base should be in free list 
+		PageDescriptor *potential_buddy = this->_free_areas[curr_order];
+		//get buddy of base
+		PageDescriptor *buddy_of_base = this->buddy_of(*base,curr_order);
+
+		//iterate over potential buddies, start from current order and split down until count is reaches 
+		for (int curr_order = order; curr_order >= 0 && count >= 0; curr_order--){
+			if (buddy_of_base != potential_buddy) {  
+				//we can't find block's buddy at this pointer to free_area - area of free_list is not NULL
+				//mm_log.messagef(LogLevel::DEBUG,"we can't find block's buddy at this pointer to free_area, so moving onto the next block in current order");
+				//move onto the next block in current order
+				potential_buddy = potential_buddy->next_free;
+				//stay in same order
+				curr_order++;
+			}
+			else if (buddy_of_base == potential_buddy) { 
+				//base's buddy is free, so we can merge to base
+				base = this->split_block(&base,curr_order);
+				count = count - this->pages_in_block(order);
+				//go to next order
+				potential_buddy = this->_free_areas[curr_order];
+				//new buddy of new base
+				buddy_of_base = this->buddy_of(*base,curr_order);
+				//mm_log.messagef(LogLevel::DEBUG,"base's buddy is free, so we can merge to base");
+			}
+		}
+
+		//iteratively split blocks till target count is reached (block same size or just bigger than count)
+		for (int i = curr_order; pages_in_block(i) >= count; i--) {
+			start = this->split_block(&start,i);
+			mm_log.messagef(LogLevel::DEBUG,"split the block starting at pdg: pdg=%p to order %d", start, i);
+		}
 
 		//remove the block of contigous pages from free-memory of that order as its been allocated (memory management core will update status to ALLOCATED)
 		this->remove_block(start, curr_order);
@@ -413,42 +445,36 @@ public:
 	{
         mm_log.messagef(LogLevel::INFO, "Buddy Allocator Initialising pgd=%p, add=0x%lx", page_descriptors, nr_page_descriptors);
 
-		//pointer to first pgd to be allocated
+		//pointer to first pgd/start of block
 		PageDescriptor *init_pgd = page_descriptors;
-		int pgd_count = 0;   //the nth pgd we are 
-		
-		//get no. of blocks in max/top order	
-		int curr_order = MAX_ORDER;
+		//the nth pgd we have initialised
+		uint64_t remaining_pgs = nr_page_descriptors;
 
-		for (int curr_order = MAX_ORDER; curr_order <= 0; curr_order--) {
-			int curr_blocksize = this->pages_in_block(curr_order);
-			uint64_t  blocks = nr_page_descriptors/curr_blocksize;
-			mm_log.messagef(LogLevel::INFO, "We have %lx blocks to initialise for %i allocator->init", blocks,curr_order);
+		for (int curr_order = MAX_ORDER; curr_order <= 0 && remaining_pgs >= 0; curr_order--) {
+			int pgd_count = 0;   //the number of blocks of pages we have initialised for this orders
+			uint64_t curr_blocksize = this->pages_in_block(curr_order);
+			int blocks = remaining_pgs/curr_blocksize;
+			mm_log.messagef(LogLevel::INFO, "We have %lx blocks to initialise for order %d", blocks, curr_order);
 
 			//initially point to first pgd in *page_descriptors
 			this->_free_areas[curr_order] = init_pgd;
 
 			//build linked list
 			while (pgd_count < blocks) {
+				//move to next block of this order
 				init_pgd->next_free = init_pgd + curr_blocksize;
 				init_pgd = init_pgd->next_free;
 				pgd_count++;
+				//decrease amount of pages left to be initialised
+				remaining_pgs = remaining_pgs - curr_blocksize;
 			}
 
-			init_pgd->next_free = NULL;
 		}
-
-
-		/* Copying dump state 
-		//init free areas to NULL
-		for (int i = 0; i < MAX_ORDER; i++) {
-			_free_areas[i] = NULL;
-		}
-		return true;
-		*/
 
 		mm_log.messagef(LogLevel::INFO, "Finished allocator->init");
-		return true;
+		
+		if (remaining_pgs > 0) return false;
+		else return true;
 	}
 
 	/**
