@@ -14,16 +14,36 @@
     export bin-dir := $(top-dir)/bin
     */
 
+
+
 int main(const char *cmdline)
 {   
-    // get top-dir
+    // get pointer to top-dir
     const char *path;
-    printf('Trying to get top dir');
-    
-    // no command, recursively search for files  
     
     if (!cmdline || strlen(cmdline) == 0) {
-		path = "/usr";
-    }
+      // no arg, recursively search for files in usr dir  
+      printf('Trying to get top dir /usr then re');
+		  path = "/usr";
+    } else {
+      //get this path and run functions to parse it
+	    path = cmdline;
+	  }
+
+    //now open root dir
+    HDIR dir = opendir(path, 0);
+	  if (is_error(dir)) {
+		    printf("Unable to open directory '%s' for reading.\n", path);
+		    return 1;
+	  }
+
+    printf("Directory Listing of '%s':\n", path);
+
+    // struct dirent child;
+	  // while (readdir(dir, &child)) {
+    //   printf("Going to next guy");
+	  // }
+	  // closedir(dir);
+
     return 0;
 }
