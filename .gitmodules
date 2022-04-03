@@ -1,6 +1,3 @@
 [submodule "infos"]
 	path = infos
 	url = https://github.com/tspink/infos
-[submodule "infos-user"]
-	path = infos-user
-	url = https://github.com/tspink/infos-user
