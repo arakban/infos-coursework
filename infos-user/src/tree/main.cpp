@@ -12,8 +12,7 @@
     export lib-dir := $(top-dir)/lib
     export src-dir := $(top-dir)/src
     export bin-dir := $(top-dir)/bin
-    */
-
+*/
 
 
 int main(const char *cmdline)
@@ -23,7 +22,7 @@ int main(const char *cmdline)
     
     if (!cmdline || strlen(cmdline) == 0) {
       // no arg, recursively search for files in usr dir  
-      printf('Trying to get top dir /usr then re');
+      printf("Trying to get top dir /usr then re");
 		  path = "/usr";
     } else {
       //get this path and run functions to parse it
