@@ -6,7 +6,10 @@
 
 #include <infos.h>
 
-bool isEnd()
+bool isEnd(char next_dir, *ptr, int n_files, int n_dir) {
+    //we need to search if there is a / for next dir
+    char cur_dir[256];
+}
 
 
 int main(const char *cmdline)
@@ -37,9 +40,9 @@ int main(const char *cmdline)
 	
 	end = false;
 	
-	strcpy(next_dir,path);
+	// strcpy(next_dir,path);
 	printf(".\n");
-	parse_dir(next_dir, depth, end, ptr);
+	// parse_dir(next_dir, depth, end, ptr);
 
 	return 0;
 }
